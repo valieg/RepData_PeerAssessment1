@@ -15,20 +15,7 @@ output:
 ##                                                                                           ##
 ##===========================================================================================##
 ---
-```{r initConstant, echo = FALSE, results = "hide"}
 
-roughDataUrl <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
-roughDataDirectory <- "tmpRoughData"
-newDataSetDirectory <- "data"
-roughFilePattern <- "*.csv"
-weNeed <- c("tools", "dplyr", "data.table", "ggplot2", "RColorBrewer", "knitr") # Libraries we need.
-
-roughfileList = c("activity.csv")
-dfList = c("result") # The basic data frame for the project.
-
-xList <- as.list(setNames(roughfileList, dfList))
-
-```
 ---
 ##===========================================================================================##
 ##                                                                                           ##
@@ -36,232 +23,7 @@ xList <- as.list(setNames(roughfileList, dfList))
 ##                                                                                           ##
 ##===========================================================================================##
 ---
-```{r initHandy, echo = FALSE, results = "hide"}
 
-#' Load a list of libraries, checking if the attachment to the calling script
-#' is successful.
-#'
-loadLibraries <- function(librariesList){
-    
-    result <- TRUE
-    
-    for (lib in librariesList) {
-        if(FALSE == library(lib, character.only = TRUE, logical.return = TRUE)){
-            result <- lib
-            break()
-        }
-    }
-    
-    return(result)
-}
-##
-## This class is intended to take care for downloading and
-## unpacking of the rough stuff(data files,...) for this
-## project.
-##
-GetRoughData <- setRefClass("GetRoughData",
-                            fields = list(fileUrl = "character",
-                                          fileName = "character",
-                                          filePath = "character",
-                                          fileDoesExist = "logical")
-                            ,
-                            methods = list(
-                                #'
-                                #' Get the full file name from the rough file URL.
-                                #'
-                                #' @return
-                                #'
-                                roughFileName = function(){
-                                    fileName <<- basename(URLdecode(fileUrl))
-                                },
-                                #'
-                                #' Get the full file name from the rough file URL.
-                                #'
-                                #' @param ... 
-                                #'
-                                #' @return
-                                #'
-                                roughFilePath = function(...){
-                                    filePath <<- file.path(..., fsep = .Platform$file.sep)
-                                },
-                                #'
-                                #' Check if the 'fileName' does exist.
-                                #'
-                                #' @param fileName 
-                                #'
-                                #' @return
-                                #'
-                                roughFileDoesExist = function(fileName = fileName){
-                                    return(ifelse(TRUE == file.exists(file.path(filePath, fileName, fsep = .Platform$file.sep)),
-                                                  fileDoesExist <<- TRUE,
-                                                  fileDoesExist <<- FALSE))
-                                },
-                                #'
-                                #' Download the rough stuff.
-                                #'
-                                #' @param fileUrl 
-                                #'
-                                #' @return
-                                #'
-                                roughFileDownload = function(fileUrl = fileUrl){
-                                    download.file(url = fileUrl,
-                                                  destfile = file.path(filePath, fileName, fsep = .Platform$file.sep),
-                                                  method = "curl")
-                                },
-                                #'
-                                #' Unpack('unzip') the downloaded rough stuff.
-                                #'
-                                #' @param fileName 
-                                #' @param packType 
-                                #'
-                                #' @return
-                                #'
-                                roughFileUnPack = function(fileName = fileName, packType = "zip"){
-                                    if("zip" == tolower(packType)){
-                                        unzip(file.path(filePath, fileName, fsep = .Platform$file.sep),
-                                              exdir = filePath)
-                                    }
-                                }
-                            )
-)
-#'
-#' Search for the rough files into the working directory(getwd()) and all his sub directories.
-#'
-#' @param xList 
-#' @param roughDataFilePattern 
-#'
-findRoughFile <- function(xList, roughDataFilePattern = roughFilePattern) {
-
-    downloadRoughData <- FALSE # Optimistic point of view!
-    fileIsMissing <- FALSE
-    countOfRoughfile <- length(xList)
-
-    # Check for the "csv" files.
-    fileLst <- list.files(path = file.path(".", fsep = .Platform$file.sep),
-                          pattern = roughDataFilePattern,
-                          full.names = TRUE, recursive = TRUE)
-
-    if(length(fileLst) < countOfRoughfile || nchar(fileLst) < 1){
-        downloadRoughData <- TRUE
-    } else {
-        # Okay, we found something. Let's see what it's about!
-        fileLst <- lapply(fileLst, normalizePath)
-        tmpList <- list()
-        i <- 1
-        for(idx in fileLst) {
-            if(TRUE == basename(idx) %in% xList){
-                #tmpList[[i]] <- idx
-                #i <- i + 1
-                 tmpList[1 + length(tmpList)] <- idx
-            }
-        }
-
-        # Check if we have the necessary files(xList or roughfileList)
-        if(length(tmpList) < countOfRoughfile || nchar(tmpList) < 1){
-            downloadRoughData <- TRUE
-        } else {
-            # Here we make sure that the rough files are in the same directory; we'll stop
-            # at the first "proper tuple".
-            # This is debatable, but for the moment it's okay.
-            tmpList1 <- list()
-            
-            for(idx in tmpList) {
-                tmpBaseName <- basename(idx)
-                if(TRUE == tmpBaseName %in% xList){
-                    tmpDirName <- dirname(idx)
-                    for(idx1 in tmpList) {
-                        if(tmpDirName != dirname(idx1)){
-                            next
-                        }
-
-                        if(FALSE == idx %in% tmpList1){
-                            tmpList1[[1 + length(tmpList1)]] <- idx # Init, just in case
-                        }
-
-                        tmpBaseName1 <- basename(idx1)
-
-                        if(TRUE == tmpBaseName1 %in% xList & tmpBaseName != tmpBaseName1){
-                            # This is okay! Another right file into the tmpDirName directory!
-
-                            if(FALSE == idx1 %in% tmpList1){
-                                tmpList1[[1 + length(tmpList1)]] <- idx1
-                            }
-                            next
-                        }
-                    }
-                }
-
-                if(countOfRoughfile == length(tmpList1) && nchar(fileLst) > 1){
-                    # As we said, we'll stop at the first "proper tuple".
-                    downloadRoughData <- FALSE
-                    break
-                }
-            }
-        }
-        
-        if(FALSE == downloadRoughData){
-            # We've the "proper tuple".
-            tmpList <- tmpList1
-            fileLst <- tmpList
-            rm(tmpList)
-            rm(tmpList1)
-        }
-    }
-    
-    if(TRUE == downloadRoughData) {
-        fileLst <- downloadRoughData
-    }
-
-    return(fileLst)
-    
-}
-#'
-#' Download the rough files zip.
-#'
-doDataDownload <- function() {
-    
-    result <- TRUE
-    ##
-    ## Make the temporary rough data set directory.
-    if(TRUE == file.exists(roughDataDirectory)){
-        # Do nothing.
-    } else {
-        dir.create(roughDataDirectory)
-    }
-    
-    ## Create the rough data object
-    oRoughData <- GetRoughData$new(fileUrl = roughDataUrl)
-    
-    ## Set the rough data file name
-    oRoughData$roughFileName()
-    
-    ## Set the rough data file path
-    oRoughData$roughFilePath(roughDataDirectory, "")
-    
-    ## Check if the file does exist in the working directory.
-    oRoughData$roughFileDoesExist(oRoughData$fileName)
-    if(TRUE == oRoughData$fileDoesExist) {
-        # The file does exist. Do nothing here!
-    } else {
-        # We have to download the rough data file!
-        oRoughData$roughFileDownload(roughDataUrl)
-        # Recheck if the file does exist in the working directory.
-        oRoughData$roughFileDoesExist(oRoughData$fileName)
-        if(FALSE == oRoughData$fileDoesExist) {
-            # Something went wrong downloading the rough data file!
-            result <- FALSE
-            print("Something went wrong trying to download the rough data from ", roughDataUrl)
-        }
-    }
-    ##
-    ## Unpack the rough data file.
-    oRoughData$roughFileUnPack(oRoughData$fileName)
-    
-    return(result)
-    
-}
-
-```
 ---
 ##===========================================================================================##
 ##                                                                                           ##
@@ -269,19 +31,7 @@ doDataDownload <- function() {
 ##                                                                                           ##
 ##===========================================================================================##
 ---
-```{r loadLibrary, echo = FALSE, results = "hide", message = FALSE}
 
-tmpLoadResult <- loadLibraries(weNeed)
-
-if(TRUE == tmpLoadResult){
-    # It's okay! Do nothing here!
-    rm(tmpLoadResult)
-} else {
-    # Upps, we've a problem loading the necessary external libraries!
-    stop(paste("The", tmpLoadResult, "library cannot be loaded.", sep = " "))
-}
-
-```
 ---
 ##===========================================================================================##
 ##                                                                                           ##
@@ -289,20 +39,15 @@ if(TRUE == tmpLoadResult){
 ##                                                                                           ##
 ##===========================================================================================##
 ---
-```{r setGlobalOption, echo = FALSE, results = "hide"}
-#opts_knit$set(base.dir = paste0('figure', .Platform$file.sep))
-opts_chunk$set(echo = FALSE, warning = FALSE, results = "hide",
-               fig.path = paste0('figure', .Platform$file.sep), fig.show = 'asis',
-               dpi = 96, fig.width = 8.09, fig.height = 5, fig.align = 'center')
-```
+
 ---
 Loading and preprocessing the data
 ---
 <h2 style="color:#67001f;">Loading and preprocessing the data</h2>
 
 > Check if the necessary data frame is loaded.
-```{r echo = TRUE}
 
+```r
 dfDoesExist <- TRUE # Optimistic point of view!
 
 lapply(dfList, function(x) {
@@ -312,12 +57,11 @@ lapply(dfList, function(x) {
             return()
         }
     }})
-
 ```
 
-> If the data frame is not loaded, then we'll search for the CSV file and will create the data frame. If the CVS file is not available, then we'll download the ZIP file for you(into the '`r roughDataDirectory`' directory).
-```{r echo = TRUE}
+> If the data frame is not loaded, then we'll search for the CSV file and will create the data frame. If the CVS file is not available, then we'll download the ZIP file for you(into the 'tmpRoughData' directory).
 
+```r
 if (FALSE == dfDoesExist) {
     ## There are NOT data frames! Let's build them!.
     
@@ -383,14 +127,16 @@ What is mean total number of steps taken per day?
 ---
 <h2 style="color:#67001f;">What is mean total number of steps taken per day?</h2>
 
-```{r question02_01, echo = TRUE, results = "asis", cache = TRUE}
+
+```r
 #  1. Calculate the total number of steps taken per day.
 
 res02_01 <- sum(result$steps, na.rm = TRUE)
 ```
-##### The total number of steps taken per day is: <span style="color:#67001f; font-weight:bold">`r res02_01`</span>
+##### The total number of steps taken per day is: <span style="color:#67001f; font-weight:bold">570608</span>
 
-```{r question02_02, echo = TRUE, results = "asis", cache = TRUE}
+
+```r
 #  2. Make a histogram of the total number of steps taken each day.
 
 ## The data set is small, so we can create temporary data frames...
@@ -429,26 +175,25 @@ ggPlot <- ggPlot + scale_x_continuous(breaks = seq(minDate, maxDate, 7),
                                                    "weeks"))
 
 print(ggPlot)
-
 ```
-```{r question02_03, echo = TRUE, results = "asis", cache = TRUE}
+
+<img src="figure/question02_02-1.png" title="plot of chunk question02_02" alt="plot of chunk question02_02" style="display: block; margin: auto;" />
+
+```r
 #  3. Calculate and report the mean and median of the total number of steps taken per day.
 
 res02_03 <- summary(resultX$steps, na.rm = TRUE)
-
 ```
-##### For the total number of steps taken per day the mean is: <span style="color:#67001f; font-weight:bold">`r format(res02_03["Mean"], nsmall = 2, scientific = F)`</span> and the median is: <span style="color:#67001f; font-weight:bold">`r format(res02_03["Median"], nsmall = 2, scientific = F)`</span>
+##### For the total number of steps taken per day the mean is: <span style="color:#67001f; font-weight:bold">9354.23</span> and the median is: <span style="color:#67001f; font-weight:bold">10395.00</span>
 
-```{r}
-# Just cleaning the mess.
-rm(minDate, maxDate, resultX, ggPlot)
-```
+
 ---
 What is the average daily activity pattern?
 ---
 <h2 style="color:#67001f;">What is the average daily activity pattern?</h2>
 
-```{r question03_01, echo = TRUE, results = "asis", cache = TRUE}
+
+```r
 #  1. Make a time series plot (i.e. type = “l”) of the 5-minute interval (x-axis) and
 #     the average number of steps taken, averaged across all days (y-axis).
 
@@ -487,31 +232,33 @@ maxText <- paste("Maximum average of the number of steps is:\n", format(resultX$
 text(resultX$interval[idx] + 60, resultX$steps[idx] - 18, maxText, pos = 4, col = "#67001f") 
 ```
 
-```{r}
-# Just cleaning the mess.
-rm(idx, maxText, resultX)
-```
+<img src="figure/question03_01-1.png" title="plot of chunk question03_01" alt="plot of chunk question03_01" style="display: block; margin: auto;" />
+
+
 ---
 Imputing missing values
 ---
 <h2 style="color:#67001f;">Imputing missing values</h2>
 
-```{r question04_01, echo = TRUE, results = "asis", cache = TRUE}
+
+```r
 #  1. Calculate and report the total number of missing values in the data set
 #     (i.e. the total number of rows with NAs)
 
 res04_01 <- nrow(result[rowSums(is.na(result)) > 0,])
 ```
-##### The total number of rows with missing values(NAs) is: <span style="color:#67001f; font-weight:bold">`r res04_01`</span>
+##### The total number of rows with missing values(NAs) is: <span style="color:#67001f; font-weight:bold">2304</span>
 
-```{r question04_02, echo = TRUE, results = "asis", cache = TRUE}
+
+```r
 #  2. Devise a strategy for filling in all of the missing values in the data set.
 #     The strategy does not need to be sophisticated. For example, you could use
 #     the mean/median for that day, or the mean for that 5-minute interval, etc.
 ```
 ##### It's probably that the person has a weekly pattern of his behaviour, so the chosen strategy is: <span style="color:#67001f; font-weight:bold">median per week day and per 5-minute interval</span>.
 
-```{r question04_03, echo = TRUE, results = "asis", cache = TRUE}
+
+```r
 #  3. Create a new data set that is equal to the original data set but with the
 #     missing data filled in.
 
@@ -537,9 +284,10 @@ resultImputed <- result %>%
                  mutate(steps = ifelse(is.na(steps), getRoundMedian(date, interval), steps))
 ```
 ##### The new imputed data frame is: <span style="color:#67001f; font-weight:bold">resultImputed</span>.
-> The original data frame have <span style="color:#67001f;">`r nrow(result)`</span> rows.<br />The imputed data frame have <span style="color:#67001f;">`r nrow(resultImputed)`</span> rows.<br />The original data frame have <span style="color:#67001f;">`r res04_01`</span> NAs.<br />The imputed data frame have <span style="color:#67001f;">`r nrow(resultImputed[rowSums(is.na(resultImputed)) > 0,])`</span> NAs.
+> The original data frame have <span style="color:#67001f;">17568</span> rows.<br />The imputed data frame have <span style="color:#67001f;">17568</span> rows.<br />The original data frame have <span style="color:#67001f;">2304</span> NAs.<br />The imputed data frame have <span style="color:#67001f;">0</span> NAs.
 
-```{r question04_04, echo = TRUE, results = "asis", cache = TRUE}
+
+```r
 #  4. Make a histogram of the total number of steps taken each day and calculate
 #     and report the mean and median total number of steps taken per day.
 #     Do these values differ from the estimates from the first part of the assignment?
@@ -581,36 +329,37 @@ ggPlot <- ggPlot + scale_x_continuous(breaks = seq(minDate, maxDate, 7),
                                                    "weeks"))
 
 print(ggPlot)
+```
 
+<img src="figure/question04_04-1.png" title="plot of chunk question04_04" alt="plot of chunk question04_04" style="display: block; margin: auto;" />
+
+```r
 res04_04 <- summary(resultX$steps, na.rm = TRUE)
 
 res04_05 <- sum(resultImputed$steps, na.rm = TRUE)
-
 ```
 ##### As we expected, the new histogram has less "holes"(the zero height bars for NAs).
-##### For the imputed data, the total number of steps taken per day the mean is: <span style="color:#67001f; font-weight:bold">`r format(res04_04["Mean"], nsmall = 2, scientific = F)`</span> and the median is: <span style="color:#67001f; font-weight:bold">`r format(res04_04["Median"], nsmall = 2, scientific = F)`</span>
+##### For the imputed data, the total number of steps taken per day the mean is: <span style="color:#67001f; font-weight:bold">9670.197</span> and the median is: <span style="color:#67001f; font-weight:bold">10395.00</span>
 
-> 1. We notice that the new mean is greater(<span style="color:#67001f;">`r format(res04_04["Mean"], nsmall = 2, scientific = F)` vs. `r format(res02_03["Mean"], nsmall = 2, scientific = F)`</span>), but<br /> the median is the same(<span style="color:#67001f;">`r format(res04_04["Median"], nsmall = 2, scientific = F)` vs. `r format(res02_03["Median"], nsmall = 2, scientific = F)`</span>)
-> 2. The total daily number of steps have increased too(<span style="color:#67001f;">`r as.integer(res04_05)`</span> vs. <span style="color:#67001f;">`r as.integer(res02_01)`</span>). This is normal, in fact we added "some steps".
+> 1. We notice that the new mean is greater(<span style="color:#67001f;">9670.197 vs. 9354.23</span>), but<br /> the median is the same(<span style="color:#67001f;">10395.00 vs. 10395.00</span>)
+> 2. The total daily number of steps have increased too(<span style="color:#67001f;">589882</span> vs. <span style="color:#67001f;">570608</span>). This is normal, in fact we added "some steps".
 
-```{r}
-# Just cleaning the mess.
-rm(res02_01, res02_03, res04_01, res04_04, minDate, maxDate, resultX, resultImputed, ggPlot)
-```
+
 ---
 Are there differences in activity patterns between weekdays and weekends?
 ---
 <h2 style="color:#67001f;">Are there differences in activity patterns between weekdays and weekends?</h2>
 
-```{r question05_01, echo = TRUE, results = "asis", cache = TRUE}
+
+```r
 #  1. Create a new factor variable in the data set with two levels – “weekday” and
 #     “weekend” indicating whether a given date is a weekday or weekend day.
 
 ## Add the new factor variable "dayType" to the original data frame.
 result$dayType <- factor(ifelse(strftime(result$date, '%u') == 7, "weekend", "weekday"))
-
 ```
-```{r question05_02, echo = TRUE, results = "asis", cache = TRUE}
+
+```r
 #  2.Make a panel plot containing a time series plot (i.e. type = “l”) of the 5-minute
 #    interval (x-axis) and the average number of steps taken, averaged across all
 #    weekday days or weekend days (y-axis). See the README file in the GitHub repository
@@ -660,13 +409,13 @@ plot( resultX$interval, resultX$steps,
       yaxp = c(0, 200, 8),
       mgp = c(2.4, 1, 0)
 )
+```
 
+<img src="figure/question05_02-1.png" title="plot of chunk question05_02" alt="plot of chunk question05_02" style="display: block; margin: auto;" />
+
+```r
 ## Restore the previous saved par() configuration.
 par(currentPar)
-
 ```
 
-```{r}
-# Just cleaning the mess.
-rm(currentPar, resultX)
-```
+
